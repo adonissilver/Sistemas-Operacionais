@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ciclo de vida de um processo</title>
+<style>
+  :root{
+    --bg: #10141a;
+    --panel: #171d26;
+    --panel-2: #1d2430;
+    --border: #2a323f;
+    --text: #e7ebf1;
+    --muted: #8a94a6;
+    --p1: #e5484d; /* vermelho */
+    --p2: #30a46c; /* verde */
+    --p3: #4f8ff0; /* azul */
+    --action: #2dd4bf;
+    --action-dark: #14b8a6;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  *{ box-sizing: border-box; }
+  body{
+    margin:0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    padding: 28px 16px 60px;
+  }
+  .wrap{ max-width: 920px; margin: 0 auto; }
+  header{ margin-bottom: 22px; }
+  h1{
+    font-size: 1.4rem;
+    font-weight: 600;
+    margin: 0 0 6px;
+    letter-spacing: -0.01em;
+  }
+  .subtitle{ color: var(--muted); font-size: 0.92rem; line-height: 1.5; max-width: 640px; }
+
+  .legend{
+    display:flex; gap:18px; margin: 16px 0 8px; flex-wrap: wrap;
+  }
+  .legend-item{ display:flex; align-items:center; gap:8px; font-size: 0.85rem; color: var(--muted); }
+  .dot{ width:12px; height:12px; border-radius:50%; flex-shrink:0; }
+
+  .panel{
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px;
+    margin-top: 14px;
+  }
+
+  .diagram-scroll{ overflow-x: auto; }
+  .diagram{
+    position: relative;
+    width: 840px;
+    height: 320px;
+  }
+  svg.connectors{ position:absolute; inset:0; width:840px; height:320px; }
+
+  .node{
+    position:absolute;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--panel-2);
+    transition: border-color .3s ease, box-shadow .3s ease;
+  }
+  .node.active{
+    border-color: #47536a;
+    box-shadow: 0 0 0 1px #3a4456 inset;
+  }
+  .node-label{
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    color: var(--muted);
+    padding: 8px 10px 4px;
+  }
+  .slot{
+    display:flex;
+    gap:6px;
+    flex-wrap:wrap;
+    padding: 0 10px 10px;
+    min-height: 26px;
+  }
+  .icon{
+    width:20px; height:20px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    font-family: var(--mono);
+    font-size: 0.6rem;
+    font-weight: 700;
+    color: #0b0e13;
+    box-shadow: 0 0 0 2px rgba(0,0,0,.25);
+  }
+
+  .controls{ display:flex; align-items:center; gap:12px; margin-top: 18px; flex-wrap: wrap; }
+  button{
+    font-family: var(--sans);
+    font-size: 0.88rem;
+    font-weight: 600;
+    border-radius: 7px;
+    padding: 10px 16px;
+    cursor: pointer;
+    border: 1px solid transparent;
+  }
+  #advance{
+    background: var(--action);
+    color: #06231f;
+  }
+  #advance:hover{ background: var(--action-dark); }
+  #advance:disabled{ background:#2a3138; color: var(--muted); cursor: not-allowed; }
+  #reset{
+    background: transparent;
+    border-color: var(--border);
+    color: var(--text);
+  }
+  #reset:hover{ border-color: #47536a; }
+
+  .status{
+    color: var(--muted);
+    font-size: 0.85rem;
+    margin-top: 10px;
+    min-height: 1.2em;
+  }
+  .status strong{ color: var(--text); font-weight: 600; }
+
+  table{
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+    font-size: 0.86rem;
+  }
+  th, td{
+    text-align: left;
+    padding: 9px 10px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  th{
+    font-family: var(--mono);
+    font-weight: 500;
+    color: var(--muted);
+    font-size: 0.78rem;
+  }
+  td.item{ font-family: var(--mono); color: var(--muted); width: 50px; }
+  .cell-badges{ display:flex; gap:6px; flex-wrap:wrap; }
+  .badge{
+    display:inline-flex; align-items:center; gap:5px;
+    padding: 3px 8px 3px 6px;
+    border-radius: 999px;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    font-size: 0.78rem;
+  }
+  .badge .dot{ width:8px; height:8px; }
+  .table-scroll{ max-height: 320px; overflow-y: auto; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Ciclo de vida de um processo</h1>
+    <div class="subtitle">Três processos (P1, P2, P3) percorrem os estados Novo → Pronto → Execução → Aguardando/Término. Avance os ciclos para ver o escalonador em ação.</div>
+  </header>
+
+  <div class="legend">
+    <div class="legend-item"><span class="dot" style="background:var(--p1)"></span> P1</div>
+    <div class="legend-item"><span class="dot" style="background:var(--p2)"></span> P2</div>
+    <div class="legend-item"><span class="dot" style="background:var(--p3)"></span> P3</div>
+  </div>
+
+  <div class="panel">
+    <div class="diagram-scroll">
+      <div class="diagram" id="diagram">
+        <svg class="connectors" viewBox="0 0 840 320">
+          <defs>
+            <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+              <path d="M0,0 L6,3 L0,6 Z" fill="#4a5568"></path>
+            </marker>
+          </defs>
+          <!-- Novo -> Pronto -->
+          <path d="M120,135 L200,135" stroke="#4a5568" stroke-width="1.5" fill="none" marker-end="url(#arrow)"></path>
+          <!-- Pronto -> Execucao -->
+          <path d="M320,135 L400,135" stroke="#4a5568" stroke-width="1.5" fill="none" marker-end="url(#arrow)"></path>
+          <!-- Execucao -> Termino -->
+          <path d="M540,135 L620,135" stroke="#4a5568" stroke-width="1.5" fill="none" marker-end="url(#arrow)"></path>
+          <!-- Execucao -> Aguardando -->
+          <path d="M460,170 L460,220" stroke="#4a5568" stroke-width="1.5" fill="none" marker-end="url(#arrow)"></path>
+          <!-- Aguardando -> Pronto (loop) -->
+          <path d="M400,235 C 300,235 260,235 260,170" stroke="#4a5568" stroke-width="1.5" fill="none" marker-end="url(#arrow)"></path>
+        </svg>
+
+        <div class="node" id="node-novo" style="left:20px; top:100px; width:100px;">
+          <div class="node-label">Novo</div>
+          <div class="slot" id="slot-novo"></div>
+        </div>
+        <div class="node" id="node-pronto" style="left:200px; top:100px; width:120px;">
+          <div class="node-label">Pronto</div>
+          <div class="slot" id="slot-pronto"></div>
+        </div>
+        <div class="node" id="node-execucao" style="left:400px; top:100px; width:140px;">
+          <div class="node-label">Execução</div>
+          <div class="slot" id="slot-execucao"></div>
+        </div>
+        <div class="node" id="node-termino" style="left:620px; top:100px; width:120px;">
+          <div class="node-label">Término</div>
+          <div class="slot" id="slot-termino"></div>
+        </div>
+        <div class="node" id="node-aguardando" style="left:400px; top:220px; width:140px;">
+          <div class="node-label">Aguardando</div>
+          <div class="slot" id="slot-aguardando"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="controls">
+      <button id="advance">Avançar ciclo →</button>
+      <button id="reset">Reiniciar</button>
+    </div>
+    <div class="status" id="status">Os três processos foram criados e admitidos na fila de prontos.</div>
+  </div>
+
+  <div class="panel">
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Item</th>
+            <th>Pronto</th>
+            <th>Executando</th>
+            <th>Aguardando</th>
+            <th>Término</th>
+          </tr>
+        </thead>
+        <tbody id="table-body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const COLORS = { p1: 'var(--p1)', p2: 'var(--p2)', p3: 'var(--p3)' };
+  const HEX = { p1: '#e5484d', p2: '#30a46c', p3: '#4f8ff0' };
+
+  let processes, readyQueue, cycleCount, finished;
+
+  function randInt(min, max){ return Math.floor(Math.random() * (max - min + 1)) + min; }
+
+  function initState(){
+    processes = {
+      p1: { id: 'p1', label: 'P1', state: 'novo', remaining: randInt(2,3) },
+      p2: { id: 'p2', label: 'P2', state: 'novo', remaining: randInt(2,3) },
+      p3: { id: 'p3', label: 'P3', state: 'novo', remaining: randInt(2,3) },
+    };
+    readyQueue = [];
+    cycleCount = 0;
+    finished = false;
+  }
+
+  function iconEl(id){ return document.getElementById('icon-' + id); }
+
+  function buildIcons(){
+    ['p1','p2','p3'].forEach(id => {
+      const el = document.createElement('div');
+      el.className = 'icon';
+      el.id = 'icon-' + id;
+      el.style.background = HEX[id];
+      el.textContent = id.toUpperCase();
+      document.getElementById('slot-novo').appendChild(el);
+    });
+  }
+
+  function moveIconTo(id, stateName){
+    const el = iconEl(id);
+    const target = document.getElementById('slot-' + stateName);
+    const first = el.getBoundingClientRect();
+    target.appendChild(el);
+    const last = el.getBoundingClientRect();
+    const dx = first.left - last.left;
+    const dy = first.top - last.top;
+    if (dx || dy) {
+      el.style.transition = 'none';
+      el.style.transform = `translate(${dx}px, ${dy}px)`;
+      requestAnimationFrame(() => {
+        el.style.transition = 'transform .55s cubic-bezier(.4,0,.2,1)';
+        el.style.transform = 'translate(0,0)';
+      });
+    }
+  }
+
+  function refreshActiveNodes(){
+    ['novo','pronto','execucao','aguardando','termino'].forEach(s => {
+      const node = document.getElementById('node-' + s);
+      const slot = document.getElementById('slot-' + s);
+      node.classList.toggle('active', slot.children.length > 0);
+    });
+  }
+
+  function snapshotByState(){
+    const byState = { pronto: [], execucao: [], aguardando: [], termino: [] };
+    Object.values(processes).forEach(p => {
+      if (byState[p.state]) byState[p.state].push(p.label + ':' + p.id[1]);
+    });
+    return byState;
+  }
+
+  function badgeHtml(entry){
+    const id = 'p' + entry.split(':')[1];
+    const label = entry.split(':')[0];
+    return `<span class="badge"><span class="dot" style="background:${HEX[id]}"></span>${label}</span>`;
+  }
+
+  function addRow(item){
+    const snap = snapshotByState();
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="item">${item}</td>
+      <td><div class="cell-badges">${snap.pronto.map(badgeHtml).join('') || '—'}</div></td>
+      <td><div class="cell-badges">${snap.execucao.map(badgeHtml).join('') || '—'}</div></td>
+      <td><div class="cell-badges">${snap.aguardando.map(badgeHtml).join('') || '—'}</div></td>
+      <td><div class="cell-badges">${snap.termino.map(badgeHtml).join('') || '—'}</div></td>
+    `;
+    document.getElementById('table-body').appendChild(tr);
+    tr.scrollIntoView({ block: 'nearest' });
+  }
+
+  function setStatus(msg){
+    document.getElementById('status').innerHTML = msg;
+  }
+
+  function admitAll(){
+    // Novo -> Pronto para os três, com pequena animação em sequência
+    Object.values(processes).forEach((p, i) => {
+      setTimeout(() => {
+        moveIconTo(p.id, 'pronto');
+        p.state = 'pronto';
+        readyQueue.push(p.id);
+        refreshActiveNodes();
+        if (i === Object.values(processes).length - 1) {
+          addRow(0);
+          setStatus('Os três processos foram admitidos e aguardam a CPU na fila de <strong>Pronto</strong>.');
+        }
+      }, i * 220);
+    });
+  }
+
+  function advanceCycle(){
+    if (finished) return;
+    cycleCount++;
+
+    // 1) resolve quem estava executando
+    const runningId = Object.values(processes).find(p => p.state === 'execucao');
+    if (runningId) {
+      const p = runningId;
+      p.remaining--;
+      if (p.remaining <= 0) {
+        p.state = 'termino';
+        moveIconTo(p.id, 'termino');
+      } else {
+        const goesToIO = Math.random() < 0.4;
+        if (goesToIO) {
+          p.state = 'aguardando';
+          p.ioTicks = 1;
+          moveIconTo(p.id, 'aguardando');
+        } else {
+          p.state = 'pronto';
+          readyQueue.push(p.id);
+          moveIconTo(p.id, 'pronto');
+        }
+      }
+    }
+
+    // 2) processa quem está aguardando
+    Object.values(processes).forEach(p => {
+      if (p.state === 'aguardando') {
+        p.ioTicks--;
+        if (p.ioTicks <= 0) {
+          p.state = 'pronto';
+          readyQueue.push(p.id);
+          moveIconTo(p.id, 'pronto');
+        }
+      }
+    });
+
+    // 3) escalona o próximo da fila de prontos
+    let narrativeNext = 'CPU ociosa neste ciclo.';
+    if (readyQueue.length > 0) {
+      const nextId = readyQueue.shift();
+      const p = processes[nextId];
+      p.state = 'execucao';
+      moveIconTo(p.id, 'execucao');
+      narrativeNext = `<strong>${p.label}</strong> entrou em Execução.`;
+    }
+
+    refreshActiveNodes();
+    addRow(cycleCount);
+    setStatus(`Ciclo ${cycleCount} — ${narrativeNext}`);
+
+    const allDone = Object.values(processes).every(p => p.state === 'termino');
+    if (allDone) {
+      finished = true;
+      document.getElementById('advance').disabled = true;
+      setStatus(`Simulação concluída em ${cycleCount} ciclos — todos os processos chegaram ao <strong>Término</strong>.`);
+    }
+  }
+
+  function reset(){
+    document.querySelectorAll('.icon').forEach(el => el.remove());
+    initState();
+    buildIcons();
+    document.getElementById('table-body').innerHTML = '';
+    document.getElementById('advance').disabled = false;
+    refreshActiveNodes();
+    setStatus('Processos recriados. Aguardando admissão na fila de prontos…');
+    setTimeout(admitAll, 300);
+  }
+
+  document.getElementById('advance').addEventListener('click', advanceCycle);
+  document.getElementById('reset').addEventListener('click', reset);
+
+  initState();
+  buildIcons();
+  refreshActiveNodes();
+  setTimeout(admitAll, 350);
+})();
+</script>
+</body>
+</html>
