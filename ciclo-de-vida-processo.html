@@ -12,9 +12,9 @@
     --border: #2a323f;
     --text: #e7ebf1;
     --muted: #8a94a6;
-    --p1: #e5484d; /* vermelho */
-    --p2: #30a46c; /* verde */
-    --p3: #4f8ff0; /* azul */
+    --verde: #30a46c;
+    --vermelho: #e5484d;
+    --azul: #4f8ff0;
     --action: #2dd4bf;
     --action-dark: #14b8a6;
     --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -79,18 +79,13 @@
   }
   .slot{
     display:flex;
-    gap:6px;
+    gap:8px;
     flex-wrap:wrap;
-    padding: 0 10px 10px;
+    padding: 0 10px 12px;
     min-height: 26px;
   }
   .icon{
     width:20px; height:20px; border-radius:50%;
-    display:flex; align-items:center; justify-content:center;
-    font-family: var(--mono);
-    font-size: 0.6rem;
-    font-weight: 700;
-    color: #0b0e13;
     box-shadow: 0 0 0 2px rgba(0,0,0,.25);
   }
 
@@ -144,16 +139,12 @@
     font-size: 0.78rem;
   }
   td.item{ font-family: var(--mono); color: var(--muted); width: 50px; }
-  .cell-badges{ display:flex; gap:6px; flex-wrap:wrap; }
-  .badge{
-    display:inline-flex; align-items:center; gap:5px;
-    padding: 3px 8px 3px 6px;
-    border-radius: 999px;
-    background: var(--panel-2);
-    border: 1px solid var(--border);
-    font-size: 0.78rem;
+  .cell-badges{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .badge-dot{
+    width:14px; height:14px; border-radius:50%;
+    box-shadow: 0 0 0 2px rgba(0,0,0,.25);
+    display:inline-block;
   }
-  .badge .dot{ width:8px; height:8px; }
   .table-scroll{ max-height: 320px; overflow-y: auto; }
 </style>
 </head>
@@ -161,13 +152,13 @@
 <div class="wrap">
   <header>
     <h1>Ciclo de vida de um processo</h1>
-    <div class="subtitle">Três processos (P1, P2, P3) percorrem os estados Novo → Pronto → Execução → Aguardando/Término. Avance os ciclos para ver o escalonador em ação.</div>
+    <div class="subtitle">Três processos — verde, vermelho e azul — percorrem os estados Novo → Pronto → Execução → Aguardando/Término. Avance os ciclos para ver o escalonador em ação.</div>
   </header>
 
   <div class="legend">
-    <div class="legend-item"><span class="dot" style="background:var(--p1)"></span> P1</div>
-    <div class="legend-item"><span class="dot" style="background:var(--p2)"></span> P2</div>
-    <div class="legend-item"><span class="dot" style="background:var(--p3)"></span> P3</div>
+    <div class="legend-item"><span class="dot" style="background:var(--verde)"></span> Verde</div>
+    <div class="legend-item"><span class="dot" style="background:var(--vermelho)"></span> Vermelho</div>
+    <div class="legend-item"><span class="dot" style="background:var(--azul)"></span> Azul</div>
   </div>
 
   <div class="panel">
@@ -179,15 +170,10 @@
               <path d="M0,0 L6,3 L0,6 Z" fill="#4a5568"></path>
             </marker>
           </defs>
-          <!-- Novo -> Pronto -->
           <path d="M120,135 L200,135" stroke="#4a5568" stroke-width="1.5" fill="none" marker-end="url(#arrow)"></path>
-          <!-- Pronto -> Execucao -->
           <path d="M320,135 L400,135" stroke="#4a5568" stroke-width="1.5" fill="none" marker-end="url(#arrow)"></path>
-          <!-- Execucao -> Termino -->
           <path d="M540,135 L620,135" stroke="#4a5568" stroke-width="1.5" fill="none" marker-end="url(#arrow)"></path>
-          <!-- Execucao -> Aguardando -->
           <path d="M460,170 L460,220" stroke="#4a5568" stroke-width="1.5" fill="none" marker-end="url(#arrow)"></path>
-          <!-- Aguardando -> Pronto (loop) -->
           <path d="M400,235 C 300,235 260,235 260,170" stroke="#4a5568" stroke-width="1.5" fill="none" marker-end="url(#arrow)"></path>
         </svg>
 
@@ -241,19 +227,30 @@
 
 <script>
 (function(){
-  const COLORS = { p1: 'var(--p1)', p2: 'var(--p2)', p3: 'var(--p3)' };
-  const HEX = { p1: '#e5484d', p2: '#30a46c', p3: '#4f8ff0' };
+  const HEX = { verde: '#30a46c', vermelho: '#e5484d', azul: '#4f8ff0' };
+  const NOMES = { verde: 'Verde', vermelho: 'Vermelho', azul: 'Azul' };
+
+  // Programa determinístico de cada processo: alterna rajadas de CPU e E/S,
+  // sempre terminando em uma rajada de CPU (após a qual vai para Término).
+  const PROGRAMAS = {
+    verde:    [ {type:'cpu', ticks:1}, {type:'io', ticks:1}, {type:'cpu', ticks:2} ],
+    vermelho: [ {type:'cpu', ticks:2}, {type:'io', ticks:1}, {type:'cpu', ticks:1} ],
+    azul:     [ {type:'cpu', ticks:2}, {type:'io', ticks:1}, {type:'cpu', ticks:1} ],
+  };
+  const ORDEM = ['verde', 'vermelho', 'azul'];
 
   let processes, readyQueue, cycleCount, finished;
 
-  function randInt(min, max){ return Math.floor(Math.random() * (max - min + 1)) + min; }
-
   function initState(){
-    processes = {
-      p1: { id: 'p1', label: 'P1', state: 'novo', remaining: randInt(2,3) },
-      p2: { id: 'p2', label: 'P2', state: 'novo', remaining: randInt(2,3) },
-      p3: { id: 'p3', label: 'P3', state: 'novo', remaining: randInt(2,3) },
-    };
+    processes = {};
+    ORDEM.forEach(id => {
+      processes[id] = {
+        id,
+        state: 'novo',
+        segIndex: 0,
+        segRemaining: PROGRAMAS[id][0].ticks,
+      };
+    });
     readyQueue = [];
     cycleCount = 0;
     finished = false;
@@ -262,12 +259,11 @@
   function iconEl(id){ return document.getElementById('icon-' + id); }
 
   function buildIcons(){
-    ['p1','p2','p3'].forEach(id => {
+    ORDEM.forEach(id => {
       const el = document.createElement('div');
       el.className = 'icon';
       el.id = 'icon-' + id;
       el.style.background = HEX[id];
-      el.textContent = id.toUpperCase();
       document.getElementById('slot-novo').appendChild(el);
     });
   }
@@ -300,16 +296,15 @@
 
   function snapshotByState(){
     const byState = { pronto: [], execucao: [], aguardando: [], termino: [] };
-    Object.values(processes).forEach(p => {
-      if (byState[p.state]) byState[p.state].push(p.label + ':' + p.id[1]);
+    ORDEM.forEach(id => {
+      const p = processes[id];
+      if (byState[p.state]) byState[p.state].push(id);
     });
     return byState;
   }
 
-  function badgeHtml(entry){
-    const id = 'p' + entry.split(':')[1];
-    const label = entry.split(':')[0];
-    return `<span class="badge"><span class="dot" style="background:${HEX[id]}"></span>${label}</span>`;
+  function badgeHtml(id){
+    return `<span class="badge-dot" style="background:${HEX[id]}" title="${NOMES[id]}"></span>`;
   }
 
   function addRow(item){
@@ -331,15 +326,14 @@
   }
 
   function admitAll(){
-    // Novo -> Pronto para os três, com pequena animação em sequência
-    Object.values(processes).forEach((p, i) => {
+    ORDEM.forEach((id, i) => {
       setTimeout(() => {
-        moveIconTo(p.id, 'pronto');
-        p.state = 'pronto';
-        readyQueue.push(p.id);
+        moveIconTo(id, 'pronto');
+        processes[id].state = 'pronto';
+        readyQueue.push(id);
         refreshActiveNodes();
-        if (i === Object.values(processes).length - 1) {
-          addRow(0);
+        if (i === ORDEM.length - 1) {
+          addRow(1);
           setStatus('Os três processos foram admitidos e aguardam a CPU na fila de <strong>Pronto</strong>.');
         }
       }, i * 220);
@@ -350,59 +344,66 @@
     if (finished) return;
     cycleCount++;
 
-    // 1) resolve quem estava executando
-    const runningId = Object.values(processes).find(p => p.state === 'execucao');
-    if (runningId) {
-      const p = runningId;
-      p.remaining--;
-      if (p.remaining <= 0) {
-        p.state = 'termino';
-        moveIconTo(p.id, 'termino');
-      } else {
-        const goesToIO = Math.random() < 0.4;
-        if (goesToIO) {
-          p.state = 'aguardando';
-          p.ioTicks = 1;
-          moveIconTo(p.id, 'aguardando');
-        } else {
-          p.state = 'pronto';
-          readyQueue.push(p.id);
-          moveIconTo(p.id, 'pronto');
-        }
-      }
-    }
-
-    // 2) processa quem está aguardando
-    Object.values(processes).forEach(p => {
+    // 1) processos em Aguardando: decrementa o tempo de E/S; ao zerar, volta para Pronto
+    ORDEM.forEach(id => {
+      const p = processes[id];
       if (p.state === 'aguardando') {
-        p.ioTicks--;
-        if (p.ioTicks <= 0) {
+        p.segRemaining--;
+        if (p.segRemaining <= 0) {
+          p.segIndex++;
+          const seg = PROGRAMAS[id][p.segIndex]; // sempre uma rajada de cpu
+          p.segRemaining = seg.ticks;
           p.state = 'pronto';
-          readyQueue.push(p.id);
-          moveIconTo(p.id, 'pronto');
+          readyQueue.push(id);
+          moveIconTo(id, 'pronto');
         }
       }
     });
 
-    // 3) escalona o próximo da fila de prontos
-    let narrativeNext = 'CPU ociosa neste ciclo.';
-    if (readyQueue.length > 0) {
-      const nextId = readyQueue.shift();
-      const p = processes[nextId];
-      p.state = 'execucao';
-      moveIconTo(p.id, 'execucao');
-      narrativeNext = `<strong>${p.label}</strong> entrou em Execução.`;
+    // 2) processo em Execução: consome 1 tick da rajada de CPU atual
+    let cpuLivre = true;
+    const runningId = ORDEM.find(id => processes[id].state === 'execucao');
+    if (runningId) {
+      const p = processes[runningId];
+      p.segRemaining--;
+      if (p.segRemaining <= 0) {
+        p.segIndex++;
+        if (p.segIndex >= PROGRAMAS[runningId].length) {
+          p.state = 'termino';
+          moveIconTo(runningId, 'termino');
+        } else {
+          const seg = PROGRAMAS[runningId][p.segIndex]; // sempre uma rajada de E/S
+          p.segRemaining = seg.ticks;
+          p.state = 'aguardando';
+          moveIconTo(runningId, 'aguardando');
+        }
+      } else {
+        cpuLivre = false; // ainda não terminou a rajada: continua na CPU
+      }
+    }
+
+    // 3) se a CPU está livre, escalona o próximo da fila de prontos
+    let narrativa = 'CPU ociosa neste ciclo.';
+    if (cpuLivre) {
+      if (readyQueue.length > 0) {
+        const nextId = readyQueue.shift();
+        processes[nextId].state = 'execucao';
+        moveIconTo(nextId, 'execucao');
+        narrativa = `O processo <strong>${NOMES[nextId]}</strong> entrou em Execução.`;
+      }
+    } else {
+      narrativa = `O processo <strong>${NOMES[runningId]}</strong> continua em Execução.`;
     }
 
     refreshActiveNodes();
-    addRow(cycleCount);
-    setStatus(`Ciclo ${cycleCount} — ${narrativeNext}`);
+    addRow(cycleCount + 1);
+    setStatus(`Ciclo ${cycleCount} — ${narrativa}`);
 
-    const allDone = Object.values(processes).every(p => p.state === 'termino');
-    if (allDone) {
+    const todosTerminaram = ORDEM.every(id => processes[id].state === 'termino');
+    if (todosTerminaram) {
       finished = true;
       document.getElementById('advance').disabled = true;
-      setStatus(`Simulação concluída em ${cycleCount} ciclos — todos os processos chegaram ao <strong>Término</strong>.`);
+      setStatus(`Simulação concluída — todos os processos chegaram ao <strong>Término</strong>.`);
     }
   }
 
