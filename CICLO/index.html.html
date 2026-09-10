@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Simulador de Escalonamento de CPU</title>
+    <style>
+        body { font-family: sans-serif; }
+
+        #cenario {
+            position: relative;
+            width: 1000px; /* Altere para a largura da sua imagem */
+            height: 562px; /* Altere para a altura da sua imagem */
+            background-image: url('SUA_IMAGEM_AQUI.JPG');
+            background-size: cover;
+            border: 2px solid #333;
+            overflow: hidden;
+        }
+
+        /* Estilização básica das pastas */
+        .pasta {
+            position: absolute;
+            width: 25px;
+            height: 25px;
+            border-radius: 4px;
+            transition: left 0.8s ease-in-out, top 0.8s ease-in-out;
+            z-index: 10;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            font-family: sans-serif;
+            font-weight: bold;
+            color: white;
+            box-shadow: 2px 2px 5px rgba(0,0,0,0.3);
+        }
+        .amarela { background-color: #ffd000; color: #333; }
+        .vermelha { background-color: #ff3b30; }
+        .azul { background-color: #007aff; }
+
+        #painel-controle { margin-top: 15px; max-width: 1000px; }
+
+        #botao-passo, #botao-reset {
+            padding: 12px 24px;
+            font-size: 16px;
+            cursor: pointer;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        #botao-passo { background: #28a745; }
+        #botao-passo:hover { background: #218838; }
+        #botao-passo:disabled { background: #9e9e9e; cursor: not-allowed; }
+
+        #botao-reset { background: #6c757d; margin-left: 10px; }
+        #botao-reset:hover { background: #5a6268; }
+
+        #explicacao {
+            background: #f8f9fa;
+            padding: 15px;
+            border-left: 5px solid #007aff;
+            margin-top: 10px;
+            line-height: 1.5;
+        }
+
+        #status-filas {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+            flex-wrap: wrap;
+        }
+        .caixa-status {
+            flex: 1;
+            min-width: 180px;
+            background: #fff;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            padding: 10px 12px;
+        }
+        .caixa-status h4 {
+            margin: 0 0 6px 0;
+            font-size: 13px;
+            text-transform: uppercase;
+            color: #555;
+        }
+        .caixa-status .conteudo {
+            font-size: 14px;
+            font-weight: bold;
+            min-height: 18px;
+        }
+        .tag {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 10px;
+            color: white;
+            font-size: 12px;
+            margin-right: 4px;
+        }
+        .tag.am { background:#ffd000; color:#333; }
+        .tag.vm { background:#ff3b30; }
+        .tag.az { background:#007aff; }
+    </style>
+</head>
+<body>
+
+    <div id="cenario">
+        <!-- As 3 pastas começam na Área de Chegada (Novo) -->
+        <div id="pasta-amarela" class="pasta amarela">AM</div>
+        <div id="pasta-vermelha" class="pasta vermelha">VM</div>
+        <div id="pasta-azul" class="pasta azul">AZ</div>
+    </div>
+
+    <div id="painel-controle">
+        <button id="botao-passo">Avançar Clock (Próximo Passo) ➔</button>
+        <button id="botao-reset">↺ Reiniciar</button>
+
+        <div id="status-filas">
+            <div class="caixa-status">
+                <h4>Pronto</h4>
+                <div class="conteudo" id="status-pronto">—</div>
+            </div>
+            <div class="caixa-status">
+                <h4>Executando (CPU)</h4>
+                <div class="conteudo" id="status-executando">—</div>
+            </div>
+            <div class="caixa-status">
+                <h4>Aguardando (E/S)</h4>
+                <div class="conteudo" id="status-aguardando">—</div>
+            </div>
+            <div class="caixa-status">
+                <h4>Terminado</h4>
+                <div class="conteudo" id="status-terminado">—</div>
+            </div>
+        </div>
+
+        <div id="explicacao">
+            <strong>Status do Sistema:</strong> Clique no botão para iniciar o carregamento dos processos.
+        </div>
+    </div>
+
+    <script>
+        // ==========================================
+        // 1. MAPEAMENTO DE COORDENADAS (X, Y)
+        // Substitua pelos pontos exatos da sua imagem
+        // ==========================================
+        const Coordenadas = {
+            NOVO:        { x: 60,  y: 400 },
+            PRONTO_1:    { x: 220, y: 220 }, // Cadeira 1 da fila
+            PRONTO_2:    { x: 260, y: 220 }, // Cadeira 2 da fila
+            PRONTO_3:    { x: 300, y: 220 }, // Cadeira 3 da fila
+            EXECUTANDO:  { x: 600, y: 120 }, // Dentro do Core da CPU
+            AGUARDANDO_1:{ x: 620, y: 420 }, // Sala amarela de I/O
+            AGUARDANDO_2:{ x: 660, y: 420 },
+            TERMINADO_1: { x: 880, y: 120 }, // Sala de saída
+            TERMINADO_2: { x: 880, y: 160 },
+            TERMINADO_3: { x: 880, y: 200 }
+        };
+
+        // ==========================================
+        // 2. ROTEIRO (CICLO DE VIDA) DE CADA PROCESSO
+        // O estado "NOVO" é implícito (ponto de partida).
+        // A partir daí, cada processo percorre seu roteiro
+        // em ordem, um estado por vez.
+        // ==========================================
+        const processos = {
+            amarela: {
+                id: 'pasta-amarela',
+                nome: 'Pasta Amarela',
+                tag: 'am',
+                // Pronto -> Executa -> Aguarda E/S -> volta pra Pronto -> Executa -> Termina
+                roteiro: ['PRONTO', 'EXECUTANDO', 'AGUARDANDO', 'PRONTO', 'EXECUTANDO', 'TERMINADO'],
+                passo: -1,      // -1 = ainda em NOVO (não admitido)
+                estado: 'NOVO'
+            },
+            vermelha: {
+                id: 'pasta-vermelha',
+                nome: 'Pasta Vermelha',
+                tag: 'vm',
+                // Nunca usa E/S: 3 rajadas de CPU intercaladas com Pronto
+                roteiro: ['PRONTO', 'EXECUTANDO', 'PRONTO', 'EXECUTANDO', 'PRONTO', 'EXECUTANDO', 'TERMINADO'],
+                passo: -1,
+                estado: 'NOVO'
+            },
+            azul: {
+                id: 'pasta-azul',
+                nome: 'Pasta Azul',
+                tag: 'az',
+                // Nunca usa E/S: 2 rajadas de CPU intercaladas com Pronto
+                roteiro: ['PRONTO', 'EXECUTANDO', 'PRONTO', 'EXECUTANDO', 'TERMINADO'],
+                passo: -1,
+                estado: 'NOVO'
+            }
+        };
+
+        // Filas/registradores lógicos do "Sistema Operacional"
+        let filaPronto = [];
+        let filaAguardando = [];
+        let cpuAtual = null;      // <- só existe UMA vaga: nunca mais de 1 processo aqui
+        let ordemFinalizacao = [];
+        let simulacaoFinalizada = false;
+
+        // Coloca todas as pastas inicialmente no cômodo NOVO
+        Object.values(processos).forEach(p => moverVisualmente(p.id, Coordenadas.NOVO));
+        atualizarPaineisDeStatus();
+
+        // ==========================================
+        // 3. MOTOR DO ESCALONADOR (1 clique = 1 unidade de tempo)
+        // ==========================================
+        function avancarNoRoteiro(p) {
+            p.passo++;
+            return p.roteiro[p.passo];
+        }
+
+        function terminarProcesso(p, logs) {
+            p.estado = 'TERMINADO';
+            ordemFinalizacao.push(p.nome);
+            logs.push(`🎉 <b>${p.nome} concluiu todos os seus ciclos e foi para TERMINADO!</b> (${ordemFinalizacao.length}ª pasta a terminar)`);
+        }
+
+        function simularProximoPasso() {
+            if (simulacaoFinalizada) return;
+
+            const logs = [];
+
+            // --- (1) ADMISSÃO: quem está em NOVO entra na fila de PRONTO ---
+            Object.values(processos).forEach(p => {
+                if (p.estado === 'NOVO') {
+                    p.estado = avancarNoRoteiro(p); // sempre 'PRONTO'
+                    filaPronto.push(p);
+                    logs.push(`• ${p.nome} chega ao sistema e é admitida na fila de <strong>PRONTO</strong>.`);
+                }
+            });
+
+            // --- (2) E/S: no máximo 1 processo termina sua operação de E/S por ciclo ---
+            if (filaAguardando.length > 0) {
+                const p = filaAguardando.shift();
+                const proximo = avancarNoRoteiro(p);
+                p.estado = proximo;
+                if (proximo === 'TERMINADO') {
+                    terminarProcesso(p, logs);
+                } else {
+                    filaPronto.push(p);
+                    logs.push(`• ⏳ ${p.nome} terminou a operação de E/S e volta para a fila de <strong>PRONTO</strong>.`);
+                }
+            }
+
+            // --- (3) CPU: o processo em execução conclui sua fatia de tempo ---
+            if (cpuAtual) {
+                const p = cpuAtual;
+                cpuAtual = null;
+                const proximo = avancarNoRoteiro(p);
+                p.estado = proximo;
+
+                if (proximo === 'PRONTO') {
+                    filaPronto.push(p);
+                    logs.push(`• ⏱️ Fatia de tempo esgotada: ${p.nome} sofre interrupção e volta para <strong>PRONTO</strong>.`);
+                } else if (proximo === 'AGUARDANDO') {
+                    filaAguardando.push(p);
+                    logs.push(`• 🖥️ ${p.nome} solicitou E/S e foi para a sala <strong>AGUARDANDO</strong>.`);
+                } else if (proximo === 'TERMINADO') {
+                    terminarProcesso(p, logs);
+                }
+            }
+
+            // --- (4) DESPACHO: a CPU nunca pode ficar ociosa havendo processo pronto ---
+            // Regra de escalonamento: sempre o processo há mais tempo esperando (FIFO)
+            if (!cpuAtual && filaPronto.length > 0) {
+                cpuAtual = filaPronto.shift();
+                cpuAtual.estado = avancarNoRoteiro(cpuAtual); // avança o ponteiro corretamente até 'EXECUTANDO'
+                logs.push(`• 🚀 O Escalonador despacha <b>${cpuAtual.nome}</b> para o <strong>PROCESSADOR</strong>.`);
+            }
+
+            atualizarPosicoesVisuais();
+            atualizarPaineisDeStatus();
+
+            // --- (5) Verifica se a simulação terminou ---
+            const todosTerminaram = Object.values(processos).every(p => p.estado === 'TERMINADO');
+            if (todosTerminaram) {
+                simulacaoFinalizada = true;
+                document.getElementById('botao-passo').disabled = true;
+                logs.push(`<br><strong>✅ Simulação concluída!</strong> Ordem de finalização: ${ordemFinalizacao.join(' → ')}.`);
+                logs.push(`Repare que a ordem de término não é necessariamente a ordem de chegada — ela depende de quantas vezes cada processo precisou voltar para PRONTO ou esperar por E/S.`);
+            } else if (logs.length === 0) {
+                logs.push('Nada a fazer neste ciclo.');
+            }
+
+            document.getElementById('explicacao').innerHTML = '<strong>Mudanças neste ciclo:</strong><br>' + logs.join('<br>');
+        }
+
+        // Organiza as pastas nas cadeiras/posições correspondentes ao seu estado atual
+        function atualizarPosicoesVisuais() {
+            filaPronto.forEach((p, index) => {
+                const local = Coordenadas[`PRONTO_${Math.min(index + 1, 3)}`];
+                moverVisualmente(p.id, local);
+            });
+
+            filaAguardando.forEach((p, index) => {
+                const local = Coordenadas[`AGUARDANDO_${Math.min(index + 1, 2)}`];
+                moverVisualmente(p.id, local);
+            });
+
+            if (cpuAtual) {
+                moverVisualmente(cpuAtual.id, Coordenadas.EXECUTANDO);
+            }
+
+            ordemFinalizacao.forEach((nome, index) => {
+                const p = Object.values(processos).find(proc => proc.nome === nome);
+                const local = Coordenadas[`TERMINADO_${Math.min(index + 1, 3)}`];
+                moverVisualmente(p.id, local);
+            });
+        }
+
+        function tagHtml(p) {
+            return `<span class="tag ${p.tag}">${p.nome.replace('Pasta ', '')}</span>`;
+        }
+
+        function atualizarPaineisDeStatus() {
+            document.getElementById('status-pronto').innerHTML =
+                filaPronto.length ? filaPronto.map(tagHtml).join(' ') : '—';
+            document.getElementById('status-executando').innerHTML =
+                cpuAtual ? tagHtml(cpuAtual) : '—';
+            document.getElementById('status-aguardando').innerHTML =
+                filaAguardando.length ? filaAguardando.map(tagHtml).join(' ') : '—';
+            document.getElementById('status-terminado').innerHTML =
+                ordemFinalizacao.length
+                    ? ordemFinalizacao.map((nome, i) => `${i + 1}º ${nome}`).join(' · ')
+                    : '—';
+        }
+
+        function moverVisualmente(id, coordenada) {
+            const el = document.getElementById(id);
+            el.style.left = coordenada.x + 'px';
+            el.style.top = coordenada.y + 'px';
+        }
+
+        function reiniciarSimulacao() {
+            Object.values(processos).forEach(p => {
+                p.passo = -1;
+                p.estado = 'NOVO';
+                moverVisualmente(p.id, Coordenadas.NOVO);
+            });
+            filaPronto = [];
+            filaAguardando = [];
+            cpuAtual = null;
+            ordemFinalizacao = [];
+            simulacaoFinalizada = false;
+            document.getElementById('botao-passo').disabled = false;
+            document.getElementById('explicacao').innerHTML =
+                '<strong>Status do Sistema:</strong> Clique no botão para iniciar o carregamento dos processos.';
+            atualizarPaineisDeStatus();
+        }
+
+        document.getElementById('botao-passo').addEventListener('click', simularProximoPasso);
+        document.getElementById('botao-reset').addEventListener('click', reiniciarSimulacao);
+    </script>
+</body>
+</html>
