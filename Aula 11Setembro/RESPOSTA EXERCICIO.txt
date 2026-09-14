@@ -1,0 +1,59 @@
+========================================
+       RESULTADO - ROUND ROBIN
+========================================
+
+Quantum utilizado: 20.00 ms
+
+Tempo de espera de cada processo:
+P1: 768.00 ms
+P2: 866.00 ms
+
+----------------------------------------
+Soma dos tempos de espera: 1634.00 ms
+Tempo médio de espera: 1634.00 / 2 = 817.00 ms
+
+----------------------------------------
+Total de trocas de contexto: 61
+Tempo de cada troca: 6.00 ms
+
+a) TEMPO TOTAL DE OVERHEAD
+61 × 6.00 = 366.00 ms
+
+b) PERCENTUAL DE OVERHEAD
+Tempo de CPU dos processos: 1240.00 ms
+Tempo gasto em trocas: 366.00 ms
+Overhead = (366.00 / 1240.00) × 100
+Overhead = 29.52%
+
+========================================
+c) IMPACTO DO QUANTUM = 10 ms
+========================================
+
+Com quantum = 10 ms:
+Tempo médio de espera: 1158.00 ms
+Trocas de contexto: 123
+Overhead total: 738.00 ms
+Percentual de overhead: 59.52%
+
+----------------------------------------
+COMPARAÇÃO
+----------------------------------------
+Quantum atual (20.00 ms):
+  Trocas: 61
+  Tempo médio de espera: 817.00 ms
+  Overhead: 366.00 ms
+  Overhead (%): 29.52%
+
+Quantum = 10 ms:
+  Trocas: 123
+  Tempo médio de espera: 1158.00 ms
+  Overhead: 738.00 ms
+  Overhead (%): 59.52%
+
+========================================
+ANÁLISE DO IMPACTO
+========================================
+
+Com quantum = 10 ms, o número de trocas aumentou de 61 para 123.
+
+O tempo médio de espera aumentou de 817.00 ms para 1158.00 ms.
